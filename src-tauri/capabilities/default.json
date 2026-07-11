@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:default",
+    "notification:default",
+    "global-shortcut:default",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-hide"
+  ]
+}

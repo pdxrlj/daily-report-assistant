@@ -1,0 +1,54 @@
+# =====================
+# 操作系统 / 编辑器
+# =====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# =====================
+# Node / 前端 (Vite)
+# =====================
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =====================
+# Rust / Tauri (后端)
+# =====================
+src-tauri/target/
+target/
+
+# Tauri 构建产物
+src-tauri/gen/
+
+# =====================
+# 环境变量 / 密钥
+# =====================
+.env
+.env.*
+!.env.example
+
+# =====================
+# 日志
+# =====================
+*.log
+logs/
+
+# =====================
+# 临时 / 缓存
+# =====================
+.cache/
+.temp/
+tmp/
