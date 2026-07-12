@@ -1,4 +1,5 @@
 use tauri::{State, AppHandle};
+use chrono::TimeZone;
 use crate::report::generator::{DailyReport, ReportGenerator};
 
 pub struct ReportState(pub ReportGenerator);
@@ -35,6 +36,46 @@ pub async fn generate_report_range(
     }
 
     Ok(reports)
+}
+
+/// 将前端 `datetime-local` 输入（格式 `YYYY-MM-DDTHH:MM` 或 `YYYY-MM-DDTHH:MM:SS`，
+/// 或仅日期 `YYYY-MM-DD`）按本地时区解析后转换为 UTC RFC3339 字符串，便于与数据库中的
+/// UTC 时间戳精确比较。
+fn normalize_local_datetime(s: &str) -> Result<String, String> {
+    let naive = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| {
+            chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+        })
+        .map_err(|e| format!("时间格式错误: {}", e))?;
+
+    let local = chrono::Local
+        .from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| "无法将输入解析为有效本地时间".to_string())?;
+
+    Ok(local.to_utc().to_rfc3339())
+}
+
+#[tauri::command]
+pub async fn generate_report_timerange(
+    start_time: String,
+    end_time: String,
+    report_state: State<'_, ReportState>,
+) -> Result<DailyReport, String> {
+    let start_utc = normalize_local_datetime(&start_time)?;
+    let end_utc = normalize_local_datetime(&end_time)?;
+
+    if start_utc > end_utc {
+        return Err("开始时间不能晚于结束时间".to_string());
+    }
+
+    report_state
+        .0
+        .generate_report_timerange(&start_utc, &end_utc)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 弹出保存对话框，将文本内容写入用户选择的文件（用于报告导出）

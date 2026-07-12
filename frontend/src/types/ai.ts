@@ -18,7 +18,7 @@ export const PROVIDER_PRESETS: Record<AIProviderType, AIProviderConfig> = {
     label: 'Ollama',
     description: '本地 Ollama 服务，支持 Gemma、Qwen-VL 等视觉模型',
     baseUrl: 'http://localhost:11434',
-    defaultModel: 'gemma4-e2b',
+    defaultModel: '',
     healthEndpoint: '/api/tags',
     chatEndpoint: '/api/generate',
   },
@@ -89,7 +89,10 @@ export interface ModelInfo {
   name: string;
   size?: string;
   modifiedAt?: string;
+  /** 是否支持视觉（图片）。undefined = 未知/不显示 */
   isVision?: boolean;
+  /** 是否支持工具调用（function calling）。undefined = 未知/不显示 */
+  supportsTools?: boolean;
 }
 
 export interface SystemInfo {

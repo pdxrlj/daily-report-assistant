@@ -105,7 +105,7 @@ function monitorsToDisplays(monitors: RawMonitorInfo[]): DisplayInfo[] {
 }
 
 export const TodayWorkPage: React.FC = () => {
-  const { getEffectiveConfig, aiProvider, detectedProviders, runDetection, autoCapture, setAutoCapture } = useSettingsStore();
+  const { getEffectiveConfig, getVisionConfig, aiProvider, detectedProviders, runDetection, autoCapture, setAutoCapture } = useSettingsStore();
   const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
@@ -153,7 +153,13 @@ export const TodayWorkPage: React.FC = () => {
     setCaptureError(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('capture_and_analyze');
+      const cfg = getVisionConfig();
+      await invoke('capture_and_analyze', {
+        model: cfg.defaultModel || null,
+        providerType: cfg.type,
+        baseUrl: cfg.baseUrl || null,
+        apiKey: cfg.apiKey ?? null,
+      });
       await loadData();
     } catch (err: any) {
       setCaptureError(typeof err === 'string' ? err : (err?.message || '截屏分析失败'));
@@ -178,7 +184,12 @@ export const TodayWorkPage: React.FC = () => {
     check();
   }, [aiProvider]);
 
-  const providerLabel = aiProvider === 'ollama' ? 'Ollama' : aiProvider === 'lmstudio' ? 'LM Studio' : 'OpenAI';
+  const visionCfg = getVisionConfig();
+  const visionProviderName =
+    visionCfg.type === 'ollama' ? 'Ollama'
+    : visionCfg.type === 'lmstudio' ? 'LM Studio'
+    : visionCfg.type === 'openai' ? 'OpenAI'
+    : '未设置';
 
   return (
     <div className="flex-1 overflow-auto">
@@ -209,7 +220,7 @@ export const TodayWorkPage: React.FC = () => {
               <Camera className="w-4 h-4" />
             )}
             <span className="hidden sm:inline">
-              {checking ? '检测中...' : providerStatus?.available ? `${providerLabel} 已连接` : 'AI 未就绪'}
+              {checking ? '检测中...' : providerStatus?.available ? `${visionProviderName} 已连接` : 'AI 未就绪'}
             </span>
           </div>
         </div>

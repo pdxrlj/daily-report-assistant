@@ -1,4 +1,4 @@
-use chrono::Timelike;
+use chrono::{TimeZone, Timelike};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use crate::errors::AppError;
@@ -154,32 +154,46 @@ impl StorageEngine {
     }
 
     pub async fn get_today_activities(&self) -> Result<Vec<ActivityRecord>, AppError> {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let records = sqlx::query_as::<_, ActivityRecord>(
-            r#"
-            SELECT * FROM activities
-            WHERE date(timestamp) = ?
-            ORDER BY timestamp ASC
-            "#,
-        )
-        .bind(&today)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(records)
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.get_activities_by_date(&today).await
     }
 
     pub async fn get_activities_by_date(&self, date: &str) -> Result<Vec<ActivityRecord>, AppError> {
-        let records = sqlx::query_as::<_, ActivityRecord>(
+        // 将传入的 "YYYY-MM-DD" 视为本地日期，按本地当天 00:00:00 ~ 次日 00:00:00 的 UTC 范围查询，
+        // 避免直接对 UTC 时间戳用 date() 截取导致国内用户凌晨活动被归入前一天。
+        let naive = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+            .map_err(|e| AppError::InvalidArgument(format!("日期格式错误: {}", e)))?;
+        let start_local = chrono::Local
+            .from_local_datetime(&naive.and_hms_opt(0, 0, 0).unwrap())
+            .single()
+            .ok_or_else(|| AppError::InvalidArgument("无效的本地日期".to_string()))?;
+        let end_local = start_local + chrono::Duration::days(1);
+        let start_utc = start_local.to_utc();
+        let end_utc = end_local.to_utc();
+
+        let start_prefix = start_utc.format("%Y-%m-%d").to_string();
+        let end_prefix = end_utc.format("%Y-%m-%d").to_string();
+
+        let candidates = sqlx::query_as::<_, ActivityRecord>(
             r#"
             SELECT * FROM activities
-            WHERE date(timestamp) = ?
+            WHERE substr(timestamp, 1, 10) >= ? AND substr(timestamp, 1, 10) <= ?
             ORDER BY timestamp ASC
             "#,
         )
-        .bind(date)
+        .bind(&start_prefix)
+        .bind(&end_prefix)
         .fetch_all(&self.pool)
         .await?;
+
+        let records: Vec<ActivityRecord> = candidates
+            .into_iter()
+            .filter(|a| {
+                chrono::DateTime::parse_from_rfc3339(&a.timestamp)
+                    .map(|t| t >= start_utc && t < end_utc)
+                    .unwrap_or(false)
+            })
+            .collect();
 
         Ok(records)
     }
@@ -200,6 +214,46 @@ impl StorageEngine {
         .bind(end_date)
         .fetch_all(&self.pool)
         .await?;
+
+        Ok(records)
+    }
+
+    /// 按精确时间范围（含时分）查询活动记录。
+    /// `start_time` / `end_time` 需为 RFC3339 字符串（如 `2026-07-11T01:00:00+00:00`）。
+    /// 先用日期前缀做粗筛，再用 Rust 解析时间戳精确过滤，避免依赖 SQLite 对带时区 RFC3339 的解析差异。
+    pub async fn get_activities_by_time_range(
+        &self,
+        start_time: &str,
+        end_time: &str,
+    ) -> Result<Vec<ActivityRecord>, AppError> {
+        let start = chrono::DateTime::parse_from_rfc3339(start_time)
+            .map_err(|e| AppError::InvalidArgument(format!("开始时间格式错误: {}", e)))?;
+        let end = chrono::DateTime::parse_from_rfc3339(end_time)
+            .map_err(|e| AppError::InvalidArgument(format!("结束时间格式错误: {}", e)))?;
+
+        let start_date = start.format("%Y-%m-%d").to_string();
+        let end_date = end.format("%Y-%m-%d").to_string();
+
+        let candidates = sqlx::query_as::<_, ActivityRecord>(
+            r#"
+            SELECT * FROM activities
+            WHERE substr(timestamp, 1, 10) >= ? AND substr(timestamp, 1, 10) <= ?
+            ORDER BY timestamp ASC
+            "#,
+        )
+        .bind(&start_date)
+        .bind(&end_date)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let records: Vec<ActivityRecord> = candidates
+            .into_iter()
+            .filter(|a| {
+                chrono::DateTime::parse_from_rfc3339(&a.timestamp)
+                    .map(|t| t >= start && t <= end)
+                    .unwrap_or(false)
+            })
+            .collect();
 
         Ok(records)
     }

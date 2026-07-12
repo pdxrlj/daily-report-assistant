@@ -40,16 +40,15 @@ impl AIScheduler {
         image_base64: &str,
         image_hash: &str,
         model: &str,
+        provider_type: AIProviderType,
+        base_url: Option<String>,
+        api_key: Option<String>,
     ) -> Result<AnalysisResult, AppError> {
         let prompt = generate_analysis_prompt();
-        let provider_type = {
-            let provider = self.provider.lock().await;
-            provider.provider_type().clone()
-        };
-        let raw = {
-            let provider = self.provider.lock().await;
-            provider.analyze_screenshot(image_base64, &prompt, model).await?
-        };
+        // 按模型来源动态构建 provider，支持跨来源混用（如视觉模型来自 LM Studio，对话模型来自 Ollama）
+        let config = AIProviderConfig::build_for(provider_type.clone(), base_url, model.to_string(), api_key);
+        let provider = Self::create_provider(config);
+        let raw = provider.analyze_screenshot(image_base64, &prompt, model).await?;
         let mut parsed = parse_analysis_result(&raw)?;
 
         // 隐私过滤：在结果保存/返回前擦除描述与关键词中的敏感文本（信用卡、密码、手机号等）
@@ -77,9 +76,17 @@ impl AIScheduler {
         provider.check_status().await
     }
 
-    /// Agent 纯文本对话（不带图像），由调用方注入工作上下文
-    pub async fn agent_chat(&self, prompt: &str, model: &str) -> Result<String, AppError> {
-        let provider = self.provider.lock().await;
+    /// Agent 纯文本对话（不带图像），由调用方注入工作上下文；按对话模型来源动态路由
+    pub async fn agent_chat(
+        &self,
+        prompt: &str,
+        model: &str,
+        provider_type: AIProviderType,
+        base_url: Option<String>,
+        api_key: Option<String>,
+    ) -> Result<String, AppError> {
+        let config = AIProviderConfig::build_for(provider_type, base_url, model.to_string(), api_key);
+        let provider = Self::create_provider(config);
         provider.chat(prompt, model).await
     }
 }

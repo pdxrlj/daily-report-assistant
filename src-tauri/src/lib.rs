@@ -87,6 +87,7 @@ pub fn run() {
             storage::commands::set_setting,
             report::commands::generate_daily_report,
             report::commands::generate_report_range,
+            report::commands::generate_report_timerange,
             report::commands::export_text_file,
         ])
         .run(tauri::generate_context!())
@@ -175,6 +176,6 @@ mod tests {
         let config = AIProviderConfig::default();
         assert_eq!(config.provider_type, AIProviderType::Ollama);
         assert_eq!(config.base_url, "http://localhost:11434");
-        assert_eq!(config.model, "gemma4-e2b");
+        assert_eq!(config.model, "");
     }
 }

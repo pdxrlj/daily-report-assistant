@@ -19,6 +19,9 @@ pub enum AppError {
 
     #[error("网络错误: {0}")]
     Network(String),
+
+    #[error("参数错误: {0}")]
+    InvalidArgument(String),
 }
 
 impl From<reqwest::Error> for AppError {

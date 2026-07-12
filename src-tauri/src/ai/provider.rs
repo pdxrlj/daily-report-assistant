@@ -34,8 +34,50 @@ impl Default for AIProviderConfig {
         Self {
             provider_type: AIProviderType::Ollama,
             base_url: "http://localhost:11434".to_string(),
-            model: "gemma4-e2b".to_string(),
+            model: String::new(),
             api_key: None,
+        }
+    }
+}
+
+impl AIProviderConfig {
+    /// 按来源构建配置：base_url 为空时使用该来源的默认地址，api_key 为空时回退到默认配置
+    pub fn build_for(
+        provider_type: AIProviderType,
+        base_url: Option<String>,
+        model: String,
+        api_key: Option<String>,
+    ) -> Self {
+        let default = Self::default_for(provider_type.clone());
+        Self {
+            provider_type,
+            base_url: base_url.filter(|u| !u.is_empty()).unwrap_or(default.base_url),
+            model,
+            api_key: api_key.filter(|k| !k.is_empty()).or(default.api_key),
+        }
+    }
+
+    /// 返回指定来源的默认配置（用于获取默认 base_url / api_key）
+    pub fn default_for(provider_type: AIProviderType) -> Self {
+        match provider_type {
+            AIProviderType::Ollama => Self {
+                provider_type,
+                base_url: "http://localhost:11434".to_string(),
+                model: String::new(),
+                api_key: None,
+            },
+            AIProviderType::LMStudio => Self {
+                provider_type,
+                base_url: "http://localhost:1234".to_string(),
+                model: String::new(),
+                api_key: None,
+            },
+            AIProviderType::OpenAI => Self {
+                provider_type,
+                base_url: "https://api.openai.com/v1".to_string(),
+                model: String::new(),
+                api_key: None,
+            },
         }
     }
 }
@@ -65,6 +107,7 @@ pub struct ProviderStatus {
 
 #[async_trait::async_trait]
 pub trait AIProvider: Send + Sync {
+    #[allow(dead_code)]
     fn provider_type(&self) -> &AIProviderType;
     async fn check_status(&self) -> Result<ProviderStatus, AppError>;
     async fn analyze_screenshot(
@@ -79,8 +122,11 @@ pub trait AIProvider: Send + Sync {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub name: String,
     pub size: Option<String>,
-    pub is_vision: bool,
+    /// None = 能力未知（不显示）；Ollama 通过 /api/show 探测，其他 provider 不探测
+    pub is_vision: Option<bool>,
+    pub supports_tools: Option<bool>,
 }

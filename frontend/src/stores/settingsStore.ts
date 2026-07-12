@@ -10,10 +10,13 @@ interface SettingsState {
   customModel: string;
   visionModel: string;
   chatModel: string;
+  visionModelSource: AIProviderType;
+  chatModelSource: AIProviderType;
   apiKey: string;
   autoDetect: boolean;
   autoCapture: boolean;
   captureInterval: number;
+  theme: 'light' | 'dark';
   detectedProviders: AIProviderType[];
   providerConfig: AIProviderConfig;
 
@@ -26,10 +29,13 @@ interface SettingsState {
   setAutoDetect: (enabled: boolean) => void;
   setAutoCapture: (enabled: boolean) => void;
   setCaptureInterval: (minutes: number) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
   runDetection: () => Promise<void>;
   getEffectiveConfig: () => AIProviderConfig;
   getVisionModel: () => string;
   getChatModel: () => string;
+  getVisionConfig: () => AIProviderConfig;
+  getChatConfig: () => AIProviderConfig;
   resetToPreset: (type: AIProviderType) => void;
 }
 
@@ -43,10 +49,13 @@ export const useSettingsStore = create<SettingsState>()(
       customModel: '',
       visionModel: '',
       chatModel: '',
+      visionModelSource: 'ollama',
+      chatModelSource: 'ollama',
       apiKey: '',
       autoDetect: true,
       autoCapture: false,
       captureInterval: 5,
+      theme: 'light',
       detectedProviders: [],
       providerConfig: { ...PROVIDER_PRESETS.ollama },
 
@@ -70,14 +79,12 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setVisionModel: (model) => {
-        set({ visionModel: model });
-        // 截图分析模型同时作为默认模型（用于视觉分析链路）
-        const state = get();
-        set({ providerConfig: { ...state.providerConfig, defaultModel: model } });
+        // 记录选中模型来源（当前服务商），用于跨来源显示时加 tag 区分
+        set({ visionModel: model, visionModelSource: get().aiProvider });
       },
 
       setChatModel: (model) => {
-        set({ chatModel: model });
+        set({ chatModel: model, chatModelSource: get().aiProvider });
       },
 
       setApiKey: (key) => {
@@ -100,6 +107,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setCaptureInterval: (minutes) => {
         set({ captureInterval: minutes });
+      },
+
+      setTheme: (theme) => {
+        set({ theme });
       },
 
       runDetection: async () => {
@@ -125,7 +136,7 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...state.providerConfig,
           baseUrl: state.customBaseUrl || state.providerConfig.baseUrl,
-          defaultModel: state.visionModel || state.customModel || state.providerConfig.defaultModel,
+          defaultModel: state.customModel || state.providerConfig.defaultModel,
           apiKey: state.apiKey || state.providerConfig.apiKey || undefined,
         };
       },
@@ -142,15 +153,47 @@ export const useSettingsStore = create<SettingsState>()(
         return state.chatModel || state.customModel || state.providerConfig.defaultModel || '';
       },
 
+      // 截图分析模型的完整配置（含来源、baseUrl、apiKey），用于按来源路由请求
+      getVisionConfig: () => {
+        const state = get();
+        const source = state.visionModelSource;
+        const preset = PROVIDER_PRESETS[source];
+        return {
+          ...preset,
+          type: source,
+          baseUrl: state.customBaseUrl && source === state.aiProvider
+            ? state.customBaseUrl
+            : preset.baseUrl,
+          apiKey: source === 'openai' ? (state.apiKey || preset.apiKey) : preset.apiKey,
+          defaultModel: state.visionModel || state.customModel || preset.defaultModel,
+        };
+      },
+
+      // 对话模型的完整配置（含来源、baseUrl、apiKey），用于按来源路由请求
+      getChatConfig: () => {
+        const state = get();
+        const source = state.chatModelSource;
+        const preset = PROVIDER_PRESETS[source];
+        return {
+          ...preset,
+          type: source,
+          baseUrl: state.customBaseUrl && source === state.aiProvider
+            ? state.customBaseUrl
+            : preset.baseUrl,
+          apiKey: source === 'openai' ? (state.apiKey || preset.apiKey) : preset.apiKey,
+          defaultModel: state.chatModel || state.customModel || preset.defaultModel,
+        };
+      },
+
       resetToPreset: (type) => {
         const config = { ...PROVIDER_PRESETS[type] };
+        // 切换服务商时保留已选的视觉/对话模型，不限制来源（用户选中哪个就用哪个）
+        const state = get();
         set({
           aiProvider: type,
-          providerConfig: config,
+          providerConfig: { ...config, defaultModel: state.visionModel || config.defaultModel },
           customBaseUrl: '',
           customModel: '',
-          visionModel: '',
-          chatModel: '',
           apiKey: '',
         });
       },
@@ -163,10 +206,13 @@ export const useSettingsStore = create<SettingsState>()(
         customModel: state.customModel,
         visionModel: state.visionModel,
         chatModel: state.chatModel,
+        visionModelSource: state.visionModelSource,
+        chatModelSource: state.chatModelSource,
         apiKey: state.apiKey,
         autoDetect: state.autoDetect,
         autoCapture: state.autoCapture,
         captureInterval: state.captureInterval,
+        theme: state.theme,
       }),
     },
   ),

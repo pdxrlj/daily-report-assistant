@@ -72,9 +72,11 @@ export class LMStudioProvider {
       });
       if (!res.ok) return [];
       const data = await res.json();
+      // LM Studio / OpenAI 兼容接口无标准能力探测，不显示能力
       return (data.data || []).map((m: any) => ({
         name: m.id,
-        isVision: /vl|vision|e2b|multimodal|llava|qwen/i.test(m.id),
+        isVision: undefined,
+        supportsTools: undefined,
       }));
     } catch {
       return [];
@@ -83,7 +85,7 @@ export class LMStudioProvider {
 
   private async pickBestModel(): Promise<string> {
     const models = await this.listModels();
-    const vision = models.find((m) => m.isVision);
-    return vision?.name || models[0]?.name || '';
+    // OpenAI 兼容接口无法可靠探测视觉能力，直接取第一个模型
+    return models[0]?.name || '';
   }
 }

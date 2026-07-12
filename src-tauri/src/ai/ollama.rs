@@ -102,32 +102,87 @@ impl AIProvider for OllamaClient {
         }
 
         let data: serde_json::Value = res.json().await?;
-        let models = data["models"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| {
-                        let name = m["name"].as_str()?;
-                        let size = m["size"].as_u64().map(|s| {
-                            let gb = s as f64 / 1024.0 / 1024.0 / 1024.0;
-                            if gb >= 1.0 {
-                                format!("{:.1}GB", gb)
-                            } else {
-                                format!("{}MB", s / 1024 / 1024)
-                            }
-                        });
-                        Some(ModelInfo {
-                            name: name.to_string(),
-                            size,
-                            is_vision: name.to_lowercase().contains("vl")
-                                || name.to_lowercase().contains("vision")
-                                || name.to_lowercase().contains("e2b")
-                                || name.to_lowercase().contains("multimodal"),
-                        })
+        let mut models = Vec::new();
+
+        if let Some(arr) = data["models"].as_array() {
+            for m in arr {
+                let name = match m["name"].as_str() {
+                    Some(n) => n.to_string(),
+                    None => continue,
+                };
+                let size = m["size"].as_u64().map(|s| {
+                    let gb = s as f64 / 1024.0 / 1024.0 / 1024.0;
+                    if gb >= 1.0 {
+                        format!("{:.1}GB", gb)
+                    } else {
+                        format!("{}MB", s / 1024 / 1024)
+                    }
+                });
+
+                // 优先使用 /api/tags 已返回的 capabilities（vision / tools / embedding 等），
+                // 避免逐个调用会 500 的 /api/show 导致能力丢失
+                let list_caps: Vec<String> = m["capabilities"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|c| c.as_str().map(|s| s.to_lowercase()))
+                            .collect()
                     })
-                    .collect()
-            })
-            .unwrap_or_default();
+                    .unwrap_or_default();
+                let mut is_vision: Option<bool> = if list_caps.iter().any(|c| c == "vision") {
+                    Some(true)
+                } else {
+                    None
+                };
+                let mut supports_tools: Option<bool> = if list_caps.iter().any(|c| c == "tools") {
+                    Some(true)
+                } else {
+                    None
+                };
+
+                // 用 /api/show 补充探测：部分旧版本 /api/tags 无 capabilities 字段，
+                // 此时用 projector_info（视觉模型才携带）兜底判断 vision
+                if let Ok(show) = self
+                    .client
+                    .post(format!("{}/api/show", self.config.base_url))
+                    .json(&serde_json::json!({ "model": name }))
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await
+                {
+                    if show.status().is_success() {
+                        if let Ok(show_data) = show.json::<serde_json::Value>().await {
+                            if let Some(caps) = show_data["capabilities"].as_array() {
+                                let caps_lower: Vec<String> = caps
+                                    .iter()
+                                    .filter_map(|c| c.as_str().map(|s| s.to_lowercase()))
+                                    .collect();
+                                let has_projector = show_data["projector_info"].as_str().map(|s| !s.is_empty()).unwrap_or(false);
+                                if caps_lower.iter().any(|c| c == "vision") || has_projector {
+                                    is_vision = Some(true);
+                                }
+                                if caps_lower.iter().any(|c| c == "tools") {
+                                    supports_tools = Some(true);
+                                }
+                            } else {
+                                // 完全没有 capabilities 字段：仅用 projector_info 判断 vision
+                                let has_projector = show_data["projector_info"].as_str().map(|s| !s.is_empty()).unwrap_or(false);
+                                if has_projector {
+                                    is_vision = Some(true);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                models.push(ModelInfo {
+                    name,
+                    size,
+                    is_vision,
+                    supports_tools,
+                });
+            }
+        }
 
         Ok(models)
     }

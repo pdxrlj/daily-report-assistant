@@ -13,25 +13,8 @@ import {
 } from 'lucide-react';
 import { mockActivities } from '../utils/mockData';
 import { useSettingsStore } from '../stores/settingsStore';
-
-interface DailyReport {
-  date: string;
-  total_activities: number;
-  focus_duration_hours: number;
-  main_activities: { activity_type: string; count: number; percentage: number }[];
-  heatmap: { hour: number; count: number }[];
-  app_breakdown: { app_name: string; count: number; percentage: number }[];
-  time_segments: { label: string; activity_count: number; description: string }[];
-  activities: {
-    time: string;
-    app_name: string;
-    activity_type: string;
-    description: string;
-    keywords: string[];
-    importance_score: number;
-  }[];
-  generated_at: string;
-}
+import { useReportStore } from '../stores/reportStore';
+import type { DailyReport } from '../stores/reportStore';
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   coding: '编程', design: '设计', communication: '沟通',
@@ -39,20 +22,47 @@ const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   meeting: '会议', other: '其他',
 };
 
+const PROVIDER_LABELS: Record<string, string> = {
+  ollama: 'Ollama',
+  lmstudio: 'LM Studio',
+  openai: 'OpenAI',
+};
+
+const PROVIDER_TAG_CLASS: Record<string, string> = {
+  ollama: 'bg-green-100 text-green-700 border-green-200',
+  lmstudio: 'bg-purple-100 text-purple-700 border-purple-200',
+  openai: 'bg-orange-100 text-orange-700 border-orange-200',
+};
+
 export const ReportPage: React.FC = () => {
-  const [report, setReport] = useState<DailyReport | null>(null);
+  const report = useReportStore((s) => s.report);
+  const setReport = useReportStore((s) => s.setReport);
+  const date = useReportStore((s) => s.date);
+  const setDate = useReportStore((s) => s.setDate);
+  const mode = useReportStore((s) => s.mode);
+  const setMode = useReportStore((s) => s.setMode);
+  const startTime = useReportStore((s) => s.startTime);
+  const setStartTime = useReportStore((s) => s.setStartTime);
+  const endTime = useReportStore((s) => s.endTime);
+  const setEndTime = useReportStore((s) => s.setEndTime);
+  const showMock = useReportStore((s) => s.showMock);
+  const setShowMock = useReportStore((s) => s.setShowMock);
+  const summary = useReportStore((s) => s.summary);
+  const setSummary = useReportStore((s) => s.setSummary);
+  const summaryError = useReportStore((s) => s.summaryError);
+  const setSummaryError = useReportStore((s) => s.setSummaryError);
+
   const [loading, setLoading] = useState(false);
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [showMock, setShowMock] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
 
-  const getChatModel = useSettingsStore((s) => s.getChatModel);
+  const getChatConfig = useSettingsStore((s) => s.getChatConfig);
+  const chatCfg = getChatConfig();
 
   const generateSummary = useCallback(async (r: DailyReport) => {
     setSummarizing(true);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const cfg = getChatConfig();
       const activitiesText = r.activities.length
         ? r.activities
             .map(
@@ -65,29 +75,45 @@ export const ReportPage: React.FC = () => {
         '请根据以下今日工作记录，生成一段自然流畅的工作日报总结（中文，1 段话，150~250 字，' +
         '突出主要成果与产出，不要分点、不要使用 markdown 标题）：\n\n' +
         `日期：${r.date}\n总活动数：${r.total_activities}\n专注时长：${r.focus_duration_hours}h\n\n工作内容：\n${activitiesText}`;
-      const res = await invoke<string>('agent_chat', { message: prompt, model: getChatModel() || null });
+      const res = await invoke<string>('agent_chat', {
+        message: prompt,
+        model: cfg.defaultModel || null,
+        providerType: cfg.type,
+        baseUrl: cfg.baseUrl || null,
+        apiKey: cfg.apiKey ?? null,
+      });
       setSummary(res);
-    } catch {
+    } catch (e: any) {
       setSummary(null);
+      setSummaryError(typeof e === 'string' ? e : (e?.message || '生成失败，请重试'));
     } finally {
       setSummarizing(false);
     }
-  }, [getChatModel]);
+  }, [getChatConfig]);
 
   const generateReport = useCallback(async () => {
     setLoading(true);
     setShowMock(false);
     setSummary(null);
+    setSummaryError(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const result = await invoke<DailyReport>('generate_daily_report', { date });
+      const result =
+        mode === 'date'
+          ? await invoke<DailyReport>('generate_daily_report', { date })
+          : await invoke<DailyReport>('generate_report_timerange', {
+              start_time: startTime,
+              end_time: endTime,
+            });
       setReport(result);
       // 生成 AI 段落总结（不阻塞报告展示）
       void generateSummary(result);
     } catch {
       // Fallback to mock if Tauri not available
+      const rangeLabel =
+        mode === 'range' ? `${startTime} ~ ${endTime}` : date;
       const mockReport: DailyReport = {
-        date,
+        date: rangeLabel,
         total_activities: mockActivities.length,
         focus_duration_hours: 1.7,
         main_activities: [
@@ -126,7 +152,7 @@ export const ReportPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [date, generateSummary]);
+  }, [date, mode, startTime, endTime, generateSummary]);
 
   const buildMarkdown = (r: DailyReport): string => {
     const lines: string[] = [];
@@ -209,25 +235,63 @@ export const ReportPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Date Picker + Generate */}
-        <div className="bg-white rounded-xl p-6 mb-6 flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+        {/* Mode switch + time selection + Generate */}
+        <div className="bg-white rounded-xl p-6 mb-6 flex flex-wrap items-center gap-4">
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            <button
+              onClick={() => setMode('date')}
+              className={`px-4 py-2 text-sm ${mode === 'date' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              按日期
+            </button>
+            <button
+              onClick={() => setMode('range')}
+              className={`px-4 py-2 text-sm border-l border-gray-300 ${mode === 'range' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              按时间范围
+            </button>
           </div>
+
+          {mode === 'date' ? (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Clock className="w-5 h-5 text-gray-500" />
+              <input
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <span className="text-sm text-gray-400">至</span>
+              <input
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          )}
+
           <button
             onClick={generateReport}
-            disabled={loading}
+            disabled={loading || (mode === 'range' && (!startTime || !endTime || startTime > endTime))}
             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
-            {loading ? '生成中...' : '生成日报'}
+            {loading ? '生成中...' : (mode === 'range' ? '生成报告' : '生成日报')}
           </button>
+          {mode === 'range' && startTime > endTime && (
+            <span className="text-xs text-red-500">开始时间不能晚于结束时间</span>
+          )}
           {showMock && (
             <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
               演示模式 (Tauri 未连接)
@@ -256,13 +320,16 @@ export const ReportPage: React.FC = () => {
             </div>
 
             {/* AI Report Summary */}
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 ai-summary">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-600" />
                   <h3 className="text-lg font-semibold text-gray-900">AI 报告摘要</h3>
                   <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 border border-blue-200">
-                    {getChatModel() || '默认模型'}
+                    {chatCfg.defaultModel || '默认模型'}
+                  </span>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${PROVIDER_TAG_CLASS[chatCfg.type] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                    {PROVIDER_LABELS[chatCfg.type] || '未设置'}
                   </span>
                 </div>
                 <button
@@ -282,14 +349,21 @@ export const ReportPage: React.FC = () => {
               ) : summary ? (
                 <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
               ) : (
-                <p className="text-sm text-gray-400">暂无摘要，点击「重新生成」让 AI 根据工作内容撰写一段话报告。</p>
+                <div>
+                  <p className="text-sm text-gray-400">暂无摘要，点击「重新生成」让 AI 根据工作内容撰写一段话报告。</p>
+                  {summaryError && (
+                    <p className="text-xs text-red-500 mt-2">生成失败：{summaryError}</p>
+                  )}
+                </div>
               )}
             </div>
 
             {/* Work Content Detail */}
             <div className="bg-white rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">今天干了什么</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {mode === 'range' ? '时间范围内的工作内容' : '今天干了什么'}
+                </h3>
                 {report.activities.length > 5 && (
                   <span className="text-xs text-gray-400">共 {report.activities.length} 条，滚动查看</span>
                 )}

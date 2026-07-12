@@ -126,21 +126,21 @@ export const HistoryPage: React.FC = () => {
       <div className="max-w-5xl mx-auto px-8 py-6">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-              <History className="w-5 h-5 text-gray-600" />
+            <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center justify-center">
+              <History className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">历史报告</h1>
-              <p className="text-sm text-gray-500">查看和管理历史日报（近 30 天）</p>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">历史报告</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">查看和管理历史日报（近 30 天）</p>
             </div>
           </div>
-          <button onClick={loadHistory} disabled={loading} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
+          <button onClick={loadHistory} disabled={loading} className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
           </button>
         </div>
 
         {showMock && (
-          <div className="text-xs text-yellow-600 bg-yellow-50 px-3 py-2 rounded-lg mb-4">
+          <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-3 py-2 rounded-lg mb-4">
             演示模式 (Tauri 未连接) — 暂无历史数据
           </div>
         )}
@@ -153,46 +153,46 @@ export const HistoryPage: React.FC = () => {
             { label: '日均专注', value: `${dailyAvg}h`, icon: Clock },
             { label: '覆盖天数', value: reports.length, icon: Calendar },
           ].map((stat) => (
-            <div key={stat.label} className="bg-white rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-              <p className="text-sm text-gray-500">{stat.label}</p>
+            <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center">
+              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
             </div>
           ))}
         </div>
 
         {/* Report List */}
-        <div className="bg-white rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">日报列表</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">日报列表</h3>
           </div>
           {reports.length === 0 ? (
             <div className="p-12 text-center">
-              <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">暂无历史报告</p>
-              <p className="text-sm text-gray-400 mt-1">开始截图分析后将在这里累积</p>
+              <History className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">暂无历史报告</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">开始截图分析后将在这里累积</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
               {reports.map((report) => (
                 <div
                   key={report.date}
                   onClick={() => openReport(report.date)}
-                  className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    selectedDate === report.date ? 'bg-blue-50' : ''
+                  className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors ${
+                    selectedDate === report.date ? 'bg-blue-50 dark:bg-blue-900/30' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-                        <Calendar className="w-6 h-6 text-gray-500" />
+                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-xl flex items-center justify-center">
+                        <Calendar className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
                           {new Date(report.date).toLocaleDateString('zh-CN', {
                             year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
                           })}
                         </p>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
                           {report.totalActivities} 条记录 · {report.focusHours}h 专注 · 主要: {report.mainActivity}
                         </p>
                       </div>
@@ -200,43 +200,43 @@ export const HistoryPage: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={(e) => { e.stopPropagation(); exportMarkdown(report.date); }}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                        className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg"
                         title="导出 Markdown"
                       >
                         <Download className="w-4 h-4" />
                       </button>
-                      <ChevronRight className={`w-5 h-5 text-gray-400 transition-transform ${selectedDate === report.date ? 'rotate-90' : ''}`} />
+                      <ChevronRight className={`w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform ${selectedDate === report.date ? 'rotate-90' : ''}`} />
                     </div>
                   </div>
 
                   {selectedDate === report.date && (
-                    <div className="mt-4 ml-16 p-4 bg-white border border-gray-200 rounded-xl">
+                    <div className="mt-4 ml-16 p-4 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl">
                       {loadingDetail ? (
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                           <Loader2 className="w-4 h-4 animate-spin" /> 加载报告中...
                         </div>
                       ) : detail ? (
                         <>
                           <div className="grid grid-cols-3 gap-4 mb-4">
                             <div className="text-center">
-                              <p className="text-lg font-bold text-gray-900">{detail.total_activities}</p>
-                              <p className="text-xs text-gray-500">活动数</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{detail.total_activities}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">活动数</p>
                             </div>
                             <div className="text-center">
-                              <p className="text-lg font-bold text-gray-900">{detail.focus_duration_hours}h</p>
-                              <p className="text-xs text-gray-500">专注时长</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{detail.focus_duration_hours}h</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">专注时长</p>
                             </div>
                             <div className="text-center">
-                              <p className="text-lg font-bold text-gray-900">{detail.app_breakdown.length}</p>
-                              <p className="text-xs text-gray-500">应用数</p>
+                              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{detail.app_breakdown.length}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">应用数</p>
                             </div>
                           </div>
                           {detail.main_activities.length > 0 && (
                             <div className="mb-3">
-                              <p className="text-xs text-gray-500 mb-1">活动类型</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">活动类型</p>
                               <div className="flex flex-wrap gap-2">
                                 {detail.main_activities.map((a) => (
-                                  <span key={a.activity_type} className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                                  <span key={a.activity_type} className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-200 rounded-full">
                                     {ACTIVITY_TYPE_LABELS[a.activity_type] || a.activity_type} {a.count}
                                   </span>
                                 ))}
@@ -253,7 +253,7 @@ export const HistoryPage: React.FC = () => {
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); exportMarkdown(report.date); }}
-                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"
                             >
                               <Download className="w-4 h-4" />
                               导出 Markdown
@@ -261,7 +261,7 @@ export const HistoryPage: React.FC = () => {
                           </div>
                         </>
                       ) : (
-                        <p className="text-sm text-gray-400">报告加载失败</p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500">报告加载失败</p>
                       )}
                     </div>
                   )}

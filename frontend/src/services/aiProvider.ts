@@ -67,6 +67,10 @@ export async function analyzeImage(
     }>('analyze_screenshot', {
       imageBase64: req.imageBase64,
       screenshotInfo: { hash: '', id: '', width: 0, height: 0, timestamp: '', monitor_name: '' },
+      model: config.defaultModel || null,
+      providerType: config.type,
+      baseUrl: config.baseUrl || null,
+      apiKey: config.apiKey ?? null,
     });
     // 后端 analyze_screenshot 直接返回结构化字段，这里重组为 content 供 parseAnalysisResult 复用
     const content = JSON.stringify({

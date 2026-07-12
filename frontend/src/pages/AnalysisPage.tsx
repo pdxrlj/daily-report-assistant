@@ -14,7 +14,7 @@ import { isTauri } from '../services/env';
 import type { StructuredAnalysis, ActivityType, ProviderStatus } from '../types/ai';
 
 export const AnalysisPage: React.FC = () => {
-  const { getEffectiveConfig, getVisionModel } = useSettingsStore();
+  const { getEffectiveConfig, getVisionConfig } = useSettingsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export const AnalysisPage: React.FC = () => {
     setResult(null);
 
     try {
-      const config = getEffectiveConfig();
+      const config = getVisionConfig();
       const prompt = generateAnalysisPrompt();
       const response = await analyzeImage(config, {
         imageBase64,
@@ -80,6 +80,7 @@ export const AnalysisPage: React.FC = () => {
     setResult(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const cfg = getVisionConfig();
       const res = await invoke<{
         analysis: {
           app_name: string;
@@ -88,7 +89,12 @@ export const AnalysisPage: React.FC = () => {
           keywords: string[];
           importance_score: number;
         };
-      }>('capture_and_analyze', { model: getVisionModel() || null });
+      }>('capture_and_analyze', {
+        model: cfg.defaultModel || null,
+        providerType: cfg.type,
+        baseUrl: cfg.baseUrl || null,
+        apiKey: cfg.apiKey ?? null,
+      });
       const a = res.analysis;
       setResult({
         appName: a.app_name,

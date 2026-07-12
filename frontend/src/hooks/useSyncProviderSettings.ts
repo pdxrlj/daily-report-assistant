@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 
 export function useSyncProviderSettings() {
-  const { aiProvider, providerConfig, customBaseUrl, customModel, apiKey, getEffectiveConfig } = useSettingsStore();
+  const { aiProvider, providerConfig, customBaseUrl, customModel, apiKey, getEffectiveConfig, visionModel, visionModelSource, chatModel, chatModelSource } = useSettingsStore();
   const synced = useRef(false);
 
   useEffect(() => {
@@ -15,6 +15,10 @@ export function useSyncProviderSettings() {
           baseUrl: cfg.baseUrl,
           model: cfg.defaultModel,
           apiKey: cfg.apiKey ?? null,
+          visionModel: visionModel || null,
+          visionModelSource: visionModelSource || null,
+          chatModel: chatModel || null,
+          chatModelSource: chatModelSource || null,
         });
         synced.current = true;
       } catch {
@@ -22,5 +26,5 @@ export function useSyncProviderSettings() {
       }
     };
     sync();
-  }, [aiProvider, providerConfig.baseUrl, providerConfig.defaultModel, customBaseUrl, customModel, apiKey]);
+  }, [aiProvider, providerConfig.baseUrl, providerConfig.defaultModel, customBaseUrl, customModel, apiKey, visionModel, visionModelSource, chatModel, chatModelSource]);
 }

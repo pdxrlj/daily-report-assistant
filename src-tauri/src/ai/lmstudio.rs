@@ -82,7 +82,8 @@ impl AIProvider for LMStudioClient {
                 }
             ],
             "max_tokens": 1024,
-            "stream": false
+            "stream": false,
+            "chat_template_kwargs": { "enable_thinking": false }
         });
 
         let mut req = self.client
@@ -102,10 +103,12 @@ impl AIProvider for LMStudioClient {
         }
 
         let data: serde_json::Value = res.json().await?;
-        data["choices"][0]["message"]["content"]
-            .as_str()
-            .map(String::from)
-            .ok_or_else(|| AppError::AIAnalysis("LM Studio返回中没有content字段".to_string()))
+        let message = &data["choices"][0]["message"];
+        let content = message["content"].as_str().unwrap_or("").to_string();
+        if content.trim().is_empty() {
+            return Err(AppError::AIAnalysis("LM Studio返回内容为空".to_string()));
+        }
+        Ok(content)
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, AppError> {
@@ -125,15 +128,12 @@ impl AIProvider for LMStudioClient {
             .map(|arr| {
                 arr.iter()
                     .filter_map(|m| {
-                        let name = m["id"].as_str()?;
-                        Some(ModelInfo {
-                            name: name.to_string(),
+                        m["id"].as_str().map(|id| ModelInfo {
+                            name: id.to_string(),
                             size: None,
-                            is_vision: name.to_lowercase().contains("vl")
-                                || name.to_lowercase().contains("vision")
-                                || name.to_lowercase().contains("e2b")
-                                || name.to_lowercase().contains("multimodal")
-                                || name.to_lowercase().contains("llava"),
+                            // OpenAI 兼容接口无标准能力探测，能力保持未知（不显示）
+                            is_vision: None,
+                            supports_tools: None,
                         })
                     })
                     .collect()
@@ -157,7 +157,8 @@ impl AIProvider for LMStudioClient {
             "model": model,
             "messages": [{ "role": "user", "content": prompt }],
             "max_tokens": 1024,
-            "stream": false
+            "stream": false,
+            "chat_template_kwargs": { "enable_thinking": false }
         });
 
         let mut req = self.client
@@ -177,20 +178,19 @@ impl AIProvider for LMStudioClient {
         }
 
         let data: serde_json::Value = res.json().await?;
-        data["choices"][0]["message"]["content"]
-            .as_str()
-            .map(String::from)
-            .ok_or_else(|| AppError::AIAnalysis("LM Studio返回中没有content字段".to_string()))
+        let message = &data["choices"][0]["message"];
+        let content = message["content"].as_str().unwrap_or("").to_string();
+        if content.trim().is_empty() {
+            return Err(AppError::AIAnalysis("LM Studio返回内容为空".to_string()));
+        }
+        Ok(content)
     }
 }
 
 impl LMStudioClient {
     async fn pick_best_model(&self) -> Option<String> {
         if let Ok(models) = self.list_models().await {
-            let vision = models.iter().find(|m| m.is_vision);
-            if let Some(v) = vision {
-                return Some(v.name.clone());
-            }
+            // OpenAI 兼容接口无法可靠探测视觉能力，直接取第一个模型
             models.first().map(|m| m.name.clone())
         } else {
             None

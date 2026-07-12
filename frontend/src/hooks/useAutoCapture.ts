@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 
 export function useAutoCapture() {
-  const { autoCapture, captureInterval } = useSettingsStore();
+  const autoCapture = useSettingsStore((s) => s.autoCapture);
+  const captureInterval = useSettingsStore((s) => s.captureInterval);
+  const getVisionConfig = useSettingsStore((s) => s.getVisionConfig);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -17,7 +19,13 @@ export function useAutoCapture() {
     const run = async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('capture_and_analyze');
+        const cfg = getVisionConfig();
+        await invoke('capture_and_analyze', {
+          model: cfg.defaultModel || null,
+          providerType: cfg.type,
+          baseUrl: cfg.baseUrl || null,
+          apiKey: cfg.apiKey ?? null,
+        });
       } catch {
         // silent fail
       }
@@ -32,5 +40,5 @@ export function useAutoCapture() {
         intervalRef.current = null;
       }
     };
-  }, [autoCapture, captureInterval]);
+  }, [autoCapture, captureInterval, getVisionConfig]);
 }

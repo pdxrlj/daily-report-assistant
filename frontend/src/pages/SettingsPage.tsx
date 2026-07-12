@@ -11,9 +11,12 @@ import {
   Wifi,
   WifiOff,
   Camera,
+  Sun,
+  Moon,
+  Check,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
-import type { AIProviderType, ProviderStatus } from '../types/ai';
+import type { AIProviderType, ProviderStatus, ModelInfo } from '../types/ai';
 import { PROVIDER_PRESETS } from '../types/ai';
 import { checkProviderHealth, listProviderModels } from '../services/aiProvider';
 
@@ -23,16 +26,81 @@ const PROVIDER_OPTIONS: { type: AIProviderType; label: string; desc: string }[] 
   { type: 'openai', label: 'OpenAI API', desc: '云端 API，需要 API Key' },
 ];
 
+const ModelList: React.FC<{
+  models: ModelInfo[];
+  selected: string;
+  onSelect: (name: string) => void;
+  sourceTag?: string;
+}> = ({ models, selected, onSelect, sourceTag }) => {
+  // 已选模型可能来自其他来源（不在当前列表），确保它始终显示
+  const displayModels = models.some((m) => m.name === selected)
+    ? models
+    : selected
+      ? [{ name: selected, size: '', isVision: undefined, supportsTools: undefined }, ...models]
+      : models;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {displayModels.map((m) => {
+        const active = selected === m.name;
+        return (
+          <button
+            key={m.name}
+            type="button"
+            onClick={() => onSelect(m.name)}
+            title={m.name}
+            className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-all ${
+              active
+                ? 'bg-green-50 border-green-400 text-green-800 shadow-sm'
+                : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {active && <Check className="w-3.5 h-3.5 flex-shrink-0 text-green-600" />}
+            {active && sourceTag && (
+              <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-500">
+                {sourceTag}
+              </span>
+            )}
+            <span className="truncate max-w-[180px]">{m.name}</span>
+            {m.isVision && (
+              <span
+                className={`px-1.5 py-0.5 text-[10px] rounded-full ${
+                  active ? 'bg-white/70 text-green-800' : 'bg-emerald-100 text-emerald-700'
+                }`}
+              >
+                视觉
+              </span>
+            )}
+            {m.supportsTools && (
+              <span
+                className={`px-1.5 py-0.5 text-[10px] rounded-full ${
+                  active ? 'bg-white/70 text-green-800' : 'bg-violet-100 text-violet-700'
+                }`}
+              >
+                工具
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 export const SettingsPage: React.FC = () => {
   const {
     aiProvider,
     customBaseUrl,
     visionModel,
     chatModel,
+    visionModelSource,
+    chatModelSource,
     apiKey,
     autoDetect,
     autoCapture,
     captureInterval,
+    theme,
+    setTheme,
     detectedProviders,
     setCustomBaseUrl,
     setVisionModel,
@@ -48,8 +116,28 @@ export const SettingsPage: React.FC = () => {
 
   const [status, setStatus] = useState<ProviderStatus | null>(null);
   const [testing, setTesting] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+
+  // 已选模型若来自其他来源，计算来源标签（淡灰 tag）用于区分
+  const maskKey = (k: string) => (k.length <= 8 ? k : `${k.slice(0, 6)}...${k.slice(-4)}`);
+  const visionSourceTag =
+    visionModelSource && visionModelSource !== aiProvider ? PROVIDER_PRESETS[visionModelSource].label : '';
+  const chatSourceTag =
+    chatModelSource && chatModelSource !== aiProvider ? PROVIDER_PRESETS[chatModelSource].label : '';
+
+  const loadModels = useCallback(async () => {
+    setLoadingModels(true);
+    try {
+      const config = getEffectiveConfig();
+      const result = await listProviderModels(config);
+      setModels(result);
+    } catch {
+      setModels([]);
+    } finally {
+      setLoadingModels(false);
+    }
+  }, [getEffectiveConfig]);
 
   const testConnection = useCallback(async () => {
     setTesting(true);
@@ -59,27 +147,15 @@ export const SettingsPage: React.FC = () => {
       const result = await checkProviderHealth(config);
       setStatus(result);
       if (result.available) {
-        setModels(result.models);
+        // 测试连接成功后自动加载带能力信息的模型列表
+        loadModels();
       }
     } catch (err: any) {
       setStatus({ available: false, models: [], error: err.message, latencyMs: 0 });
     } finally {
       setTesting(false);
     }
-  }, [getEffectiveConfig]);
-
-  const loadModels = useCallback(async () => {
-    setLoadingModels(true);
-    try {
-      const config = getEffectiveConfig();
-      const result = await listProviderModels(config);
-      setModels(result.map((m) => m.name));
-    } catch {
-      setModels([]);
-    } finally {
-      setLoadingModels(false);
-    }
-  }, [getEffectiveConfig]);
+  }, [getEffectiveConfig, loadModels]);
 
   useEffect(() => {
     if (autoDetect) {
@@ -101,11 +177,41 @@ export const SettingsPage: React.FC = () => {
           <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
             <Settings className="w-5 h-5 text-gray-600" />
           </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">设置</h1>
+          <p className="text-sm text-gray-500">配置 AI 模型和系统参数</p>
+        </div>
+      </div>
+
+      {/* 外观 / 主题 */}
+      <div className="bg-white rounded-xl p-6 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Sun className="w-5 h-5 text-gray-500" />
+          <h2 className="text-lg font-semibold text-gray-900">外观</h2>
+        </div>
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">设置</h1>
-            <p className="text-sm text-gray-500">配置 AI 模型和系统参数</p>
+            <p className="text-sm font-medium text-gray-900">颜色主题</p>
+            <p className="text-xs text-gray-500 mt-1">亮色适合白天，暗色（黑色）适合夜间保护视力</p>
+          </div>
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            <button
+              onClick={() => setTheme('light')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm ${theme === 'light' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Sun className="w-4 h-4" />
+              亮色
+            </button>
+            <button
+              onClick={() => setTheme('dark')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm border-l border-gray-300 ${theme === 'dark' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Moon className="w-4 h-4" />
+              暗色
+            </button>
           </div>
         </div>
+      </div>
 
         {/* Auto-detect Banner */}
         {detectedProviders.length > 0 && (
@@ -191,6 +297,21 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
 
+            {aiProvider === 'openai' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+            )}
+
             {/* 截图分析模型（视觉模型） */}
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -206,29 +327,39 @@ export const SettingsPage: React.FC = () => {
                   刷新列表
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mb-2">用于分析屏幕截图，建议选择支持视觉的模型（VL / vision）</p>
-              <input
-                type="text"
-                value={visionModel}
-                onChange={(e) => setVisionModel(e.target.value)}
-                placeholder={PROVIDER_PRESETS[aiProvider].defaultModel || '输入模型名称'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              />
+              <p className="text-xs text-gray-400 mb-2">用于分析屏幕截图，建议选择支持视觉的模型。Ollama 会显示「视觉 / 工具」能力标签，其他服务不探测能力。</p>
+              <div
+                className={`w-full px-3 py-2 rounded-lg text-sm border flex items-center gap-2 ${
+                  visionModel
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-dashed border-gray-300 bg-gray-50 text-gray-400'
+                }`}
+              >
+                {visionModel ? (
+                  <>
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    {visionSourceTag && (
+                      <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-500">
+                        {visionSourceTag}
+                      </span>
+                    )}
+                    <span className="font-medium truncate">{visionModel}</span>
+                    {visionModelSource === 'openai' && apiKey && (
+                      <span className="text-gray-400 text-xs">· Key: {maskKey(apiKey)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span>未选择模型，请从下方列表选择</span>
+                )}
+              </div>
               {models.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {models.map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setVisionModel(m)}
-                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                        visionModel === m
-                          ? 'bg-blue-100 border-blue-300 text-blue-700'
-                          : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
+                <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                  <ModelList models={models} selected={visionModel} onSelect={setVisionModel} sourceTag={visionSourceTag} />
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {aiProvider === 'ollama'
+                      ? '模型能力（视觉 / 工具调用）已通过 Ollama API 自动探测'
+                      : '该服务商不探测模型能力，请按模型名称手动选择'}
+                  </p>
                 </div>
               )}
             </div>
@@ -237,46 +368,36 @@ export const SettingsPage: React.FC = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">对话模型</label>
               <p className="text-xs text-gray-400 mb-2">用于 Agent 智能助手对话，可选择更擅长文本推理的模型</p>
-              <input
-                type="text"
-                value={chatModel}
-                onChange={(e) => setChatModel(e.target.value)}
-                placeholder={PROVIDER_PRESETS[aiProvider].defaultModel || '输入模型名称'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-              />
+              <div
+                className={`w-full px-3 py-2 rounded-lg text-sm border flex items-center gap-2 ${
+                  chatModel
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-dashed border-gray-300 bg-gray-50 text-gray-400'
+                }`}
+              >
+                {chatModel ? (
+                  <>
+                    <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    {chatSourceTag && (
+                      <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-500">
+                        {chatSourceTag}
+                      </span>
+                    )}
+                    <span className="font-medium truncate">{chatModel}</span>
+                    {chatModelSource === 'openai' && apiKey && (
+                      <span className="text-gray-400 text-xs">· Key: {maskKey(apiKey)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span>未选择模型，请从下方列表选择</span>
+                )}
+              </div>
               {models.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {models.map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setChatModel(m)}
-                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                        chatModel === m
-                          ? 'bg-purple-100 border-purple-300 text-purple-700'
-                          : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
+                <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                  <ModelList models={models} selected={chatModel} onSelect={setChatModel} sourceTag={chatSourceTag} />
                 </div>
               )}
             </div>
-
-            {aiProvider === 'openai' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
-              </div>
-            )}
           </div>
 
           {/* Test Connection */}

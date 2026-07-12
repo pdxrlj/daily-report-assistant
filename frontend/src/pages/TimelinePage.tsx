@@ -10,14 +10,20 @@ const ACTIVITY_ICONS: Record<string, string> = {
 };
 
 const ACTIVITY_COLORS: Record<string, string> = {
-  coding: 'border-l-blue-500 bg-blue-50',
-  design: 'border-l-purple-500 bg-purple-50',
-  communication: 'border-l-green-500 bg-green-50',
-  reading: 'border-l-yellow-500 bg-yellow-50',
-  data_analysis: 'border-l-orange-500 bg-orange-50',
-  writing: 'border-l-pink-500 bg-pink-50',
-  meeting: 'border-l-red-500 bg-red-50',
-  other: 'border-l-gray-500 bg-gray-50',
+  coding: 'border-l-blue-500 bg-blue-50 dark:bg-blue-950/40',
+  design: 'border-l-purple-500 bg-purple-50 dark:bg-purple-950/40',
+  communication: 'border-l-green-500 bg-green-50 dark:bg-green-950/40',
+  reading: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/40',
+  data_analysis: 'border-l-orange-500 bg-orange-50 dark:bg-orange-950/40',
+  writing: 'border-l-pink-500 bg-pink-50 dark:bg-pink-950/40',
+  meeting: 'border-l-red-500 bg-red-50 dark:bg-red-950/40',
+  other: 'border-l-gray-500 bg-gray-50 dark:bg-gray-800/60',
+};
+
+const ACTIVITY_DOT_COLORS: Record<string, string> = {
+  coding: 'bg-blue-500', design: 'bg-purple-500', communication: 'bg-green-500',
+  reading: 'bg-yellow-500', data_analysis: 'bg-orange-500', writing: 'bg-pink-500',
+  meeting: 'bg-red-500', other: 'bg-gray-500',
 };
 
 export const TimelinePage: React.FC = () => {
@@ -89,46 +95,50 @@ export const TimelinePage: React.FC = () => {
           </div>
         ) : (
           <div className="relative">
-            {/* Timeline line */}
-            <div className="absolute left-[31px] top-0 bottom-0 w-0.5 bg-gray-200" />
+            {/* Timeline vertical line (aligned with dot column center: 80px + 12px) */}
+            <div className="absolute left-[91px] top-3 bottom-3 w-0.5 bg-gray-200 dark:bg-gray-700" />
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               {activities
+                .slice()
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((activity, idx) => {
                   const time = new Date(activity.timestamp);
-                  const timeStr = time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                  const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
                   const colorClass = ACTIVITY_COLORS[activity.activityType] || ACTIVITY_COLORS.other;
+                  const dotClass = ACTIVITY_DOT_COLORS[activity.activityType] || ACTIVITY_DOT_COLORS.other;
                   const icon = ACTIVITY_ICONS[activity.activityType] || ACTIVITY_ICONS.other;
 
                   return (
-                    <div key={activity.id || idx} className="flex gap-4">
-                      {/* Time dot */}
-                      <div className="relative flex-shrink-0">
-                        <div className="w-[63px] text-right pr-4 pt-1">
-                          <span className="text-sm text-gray-500 font-mono">{timeStr}</span>
-                        </div>
-                        <div className="absolute right-[-16px] top-[6px] w-3 h-3 rounded-full bg-white border-2 border-blue-500 z-10" />
+                    <div key={activity.id || idx} className="grid grid-cols-[80px_24px_1fr] items-start">
+                      {/* Time */}
+                      <div className="text-right pt-1.5 pr-1">
+                        <span className="text-sm font-mono text-gray-500 dark:text-gray-400">{timeStr}</span>
+                      </div>
+
+                      {/* Dot */}
+                      <div className="flex justify-center pt-2">
+                        <div className={`w-3 h-3 rounded-full border-2 border-white dark:border-gray-900 z-10 ${dotClass}`} />
                       </div>
 
                       {/* Activity card */}
-                      <div className={`flex-1 ml-4 p-4 rounded-xl border-l-4 ${colorClass}`}>
+                      <div className={`p-4 rounded-xl border-l-4 ${colorClass}`}>
                         <div className="flex items-center gap-2 mb-1">
                           <span>{icon}</span>
-                          <span className="font-medium text-gray-900">{activity.appName}</span>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-white/60 text-gray-500">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{activity.appName}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-white/60 text-gray-500 dark:bg-gray-700 dark:text-gray-300">
                             {activity.activityType}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-700">{activity.description}</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-300">{activity.description}</p>
                         <div className="flex flex-wrap gap-1 mt-2">
                           {activity.keywords.map((kw, i) => (
-                            <span key={i} className="text-xs px-2 py-0.5 bg-white/60 text-gray-500 rounded-full">
+                            <span key={i} className="text-xs px-2 py-0.5 bg-white/60 text-gray-500 dark:bg-gray-700 dark:text-gray-300 rounded-full">
                               {kw}
                             </span>
                           ))}
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            activity.importanceScore >= 0.7 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                            activity.importanceScore >= 0.7 ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
                           }`}>
                             重要性 {activity.importanceScore.toFixed(1)}
                           </span>

@@ -26,7 +26,7 @@ const AGENT_ACTIONS: AgentAction[] = [
 ];
 
 export const AgentPage: React.FC = () => {
-  const { getEffectiveConfig, customModel, providerConfig } = useSettingsStore();
+  const { getChatConfig, getEffectiveConfig, customModel, providerConfig } = useSettingsStore();
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: '你好！我是你的工作助手。我可以帮你分析工作数据、生成报告、提供建议。请告诉我你需要什么帮助？', timestamp: new Date() },
   ]);
@@ -73,9 +73,13 @@ export const AgentPage: React.FC = () => {
 
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const cfg = getChatConfig();
       const response = await invoke<string>('agent_chat', {
         message: text,
-        model: selectedModel || null,
+        model: selectedModel || cfg.defaultModel || null,
+        providerType: cfg.type,
+        baseUrl: cfg.baseUrl || null,
+        apiKey: cfg.apiKey ?? null,
       });
       setMessages((prev) => [...prev, { role: 'assistant', content: response, timestamp: new Date() }]);
     } catch (err: any) {

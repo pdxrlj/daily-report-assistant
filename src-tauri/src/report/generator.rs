@@ -73,13 +73,39 @@ impl ReportGenerator {
 
     pub async fn generate_daily_report(&self, date: &str) -> Result<DailyReport, AppError> {
         let activities = self.storage.get_activities_by_date(date).await?;
+        Ok(self.build_report(activities, date.to_string()))
+    }
+
+    /// 按精确时间范围（开始时间~结束时间）生成聚合报告。
+    /// `start_time` / `end_time` 需为 RFC3339 字符串（UTC）。
+    pub async fn generate_report_timerange(
+        &self,
+        start_time: &str,
+        end_time: &str,
+    ) -> Result<DailyReport, AppError> {
+        let activities = self
+            .storage
+            .get_activities_by_time_range(start_time, end_time)
+            .await?;
+
+        let fmt_local = |s: &str| -> String {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|_| s.to_string())
+        };
+        let label = format!("{} ~ {}", fmt_local(start_time), fmt_local(end_time));
+
+        Ok(self.build_report(activities, label))
+    }
+
+    fn build_report(&self, activities: Vec<ActivityRecord>, date_label: String) -> DailyReport {
         let total = activities.len();
 
         let activities_detail: Vec<ActivityItem> = activities
             .iter()
             .map(|a| {
                 let time = DateTime::parse_from_rfc3339(&a.timestamp)
-                    .map(|t| t.format("%H:%M").to_string())
+                    .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
                     .unwrap_or_else(|_| a.timestamp.clone());
                 ActivityItem {
                     time,
@@ -93,8 +119,8 @@ impl ReportGenerator {
             .collect();
 
         if total == 0 {
-            return Ok(DailyReport {
-                date: date.to_string(),
+            return DailyReport {
+                date: date_label,
                 total_activities: 0,
                 focus_duration_hours: 0.0,
                 main_activities: vec![],
@@ -103,7 +129,7 @@ impl ReportGenerator {
                 time_segments: vec![],
                 activities: vec![],
                 generated_at: chrono::Utc::now().to_rfc3339(),
-            });
+            };
         }
 
         let heatmap = self.calculate_heatmap(&activities);
@@ -112,8 +138,8 @@ impl ReportGenerator {
         let focus_hours = self.calculate_focus_duration(&activities);
         let time_segments = self.analyze_time_segments(&activities);
 
-        Ok(DailyReport {
-            date: date.to_string(),
+        DailyReport {
+            date: date_label,
             total_activities: total,
             focus_duration_hours: focus_hours,
             main_activities: activity_summary,
@@ -122,14 +148,14 @@ impl ReportGenerator {
             time_segments,
             activities: activities_detail,
             generated_at: chrono::Utc::now().to_rfc3339(),
-        })
+        }
     }
 
     fn calculate_heatmap(&self, activities: &[ActivityRecord]) -> Vec<HourlyHeatmap> {
         let mut hourly = HashMap::new();
         for activity in activities {
             if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&activity.timestamp) {
-                let hour = ts.hour() as i32;
+                let hour = ts.with_timezone(&chrono::Local).hour() as i32;
                 *hourly.entry(hour).or_insert(0) += 1;
             }
         }
@@ -229,7 +255,7 @@ impl ReportGenerator {
                     .filter(|a| {
                         chrono::DateTime::parse_from_rfc3339(&a.timestamp)
                             .map(|t| {
-                                let h = t.hour() as i32;
+                                let h = t.with_timezone(&chrono::Local).hour() as i32;
                                 h >= start && h < end
                             })
                             .unwrap_or(false)

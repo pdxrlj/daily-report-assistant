@@ -17,11 +17,15 @@ pub async fn analyze_screenshot(
     image_base64: String,
     screenshot_info: ScreenshotInfo,
     model: Option<String>,
+    provider_type: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
     ai_state: State<'_, AISchedulerState>,
 ) -> Result<serde_json::Value, String> {
     let model = model.unwrap_or_default();
+    let provider_type = parse_provider_type(provider_type)?;
     let result = ai_state.0
-        .analyze_screenshot(&image_base64, &screenshot_info.hash, &model)
+        .analyze_screenshot(&image_base64, &screenshot_info.hash, &model, provider_type, base_url, api_key)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -63,16 +67,20 @@ pub async fn save_analysis_result(
 #[tauri::command]
 pub async fn capture_and_analyze(
     model: Option<String>,
+    provider_type: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
     ai_state: State<'_, AISchedulerState>,
     db_state: State<'_, DBState>,
 ) -> Result<serde_json::Value, String> {
     let model = model.unwrap_or_default();
+    let provider_type = parse_provider_type(provider_type)?;
     let manager = crate::screenshot::manager::ScreenshotManager::new();
     let (buffer, info) = manager.capture_screen().map_err(|e| e.to_string())?;
     let base64_data = base64::engine::general_purpose::STANDARD.encode(buffer.data());
 
     let result = ai_state.0
-        .analyze_screenshot(&base64_data, &info.hash, &model)
+        .analyze_screenshot(&base64_data, &info.hash, &model, provider_type, base_url, api_key)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -149,6 +157,11 @@ pub async fn update_ai_provider(
     base_url: String,
     model: String,
     api_key: Option<String>,
+    vision_model: Option<String>,
+    vision_model_source: Option<String>,
+    chat_model: Option<String>,
+    chat_model_source: Option<String>,
+    db_state: State<'_, DBState>,
     ai_state: State<'_, AISchedulerState>,
 ) -> Result<String, String> {
     let provider = match provider_type.as_str() {
@@ -165,6 +178,27 @@ pub async fn update_ai_provider(
         api_key,
     };
 
+    // 持久化当前服务商与各模型来源，供后端按来源路由请求
+    let db = db_state.0.clone();
+    let _ = db.set_setting("ai_provider", &provider_type).await;
+    let _ = db.set_setting("ai_base_url", &config.base_url).await;
+    let _ = db.set_setting("ai_model", &config.model).await;
+    if let Some(k) = &config.api_key {
+        let _ = db.set_setting("ai_api_key", k).await;
+    }
+    if let Some(vm) = &vision_model {
+        let _ = db.set_setting("vision_model", vm).await;
+    }
+    if let Some(vs) = &vision_model_source {
+        let _ = db.set_setting("vision_model_source", vs).await;
+    }
+    if let Some(cm) = &chat_model {
+        let _ = db.set_setting("chat_model", cm).await;
+    }
+    if let Some(cs) = &chat_model_source {
+        let _ = db.set_setting("chat_model_source", cs).await;
+    }
+
     ai_state.0.update_provider(config).await;
     Ok("ok".to_string())
 }
@@ -174,6 +208,9 @@ pub async fn update_ai_provider(
 pub async fn agent_chat(
     message: String,
     model: Option<String>,
+    provider_type: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
     ai_state: State<'_, AISchedulerState>,
     db_state: State<'_, DBState>,
 ) -> Result<String, String> {
@@ -186,7 +223,7 @@ pub async fn agent_chat(
         ctx.push_str(&format!("今日共有 {} 条工作记录：\n", activities.len()));
         for (i, a) in activities.iter().enumerate() {
             let time = chrono::DateTime::parse_from_rfc3339(&a.timestamp)
-                .map(|t| t.format("%H:%M").to_string())
+                .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
                 .unwrap_or_default();
             ctx.push_str(&format!(
                 "{}. [{}][{}][{}] {} (重要性{:.1})\n",
@@ -197,5 +234,17 @@ pub async fn agent_chat(
 
     let prompt = format!("{}\n\n用户问题：{}", ctx, message);
     let model = model.unwrap_or_default();
-    ai_state.0.agent_chat(&prompt, &model).await.map_err(|e| e.to_string())
+    let provider_type = parse_provider_type(provider_type)?;
+    ai_state.0.agent_chat(&prompt, &model, provider_type, base_url, api_key).await.map_err(|e| e.to_string())
+}
+
+/// 将前端传来的来源字符串解析为 AIProviderType
+fn parse_provider_type(value: Option<String>) -> Result<crate::ai::provider::AIProviderType, String> {
+    match value.as_deref() {
+        Some("ollama") => Ok(crate::ai::provider::AIProviderType::Ollama),
+        Some("lmstudio") => Ok(crate::ai::provider::AIProviderType::LMStudio),
+        Some("openai") => Ok(crate::ai::provider::AIProviderType::OpenAI),
+        Some(other) => Err(format!("Unknown provider type: {}", other)),
+        None => Ok(crate::ai::provider::AIProviderType::Ollama),
+    }
 }

@@ -53,12 +53,52 @@ export class OllamaProvider {
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return (data.models || []).map((m: any) => ({
-        name: m.name,
-        size: this.formatSize(m.size),
-        modifiedAt: m.modified_at,
-        isVision: /vl|vision|e2b|multimodal/i.test(m.name),
-      }));
+      const rawModels: any[] = data.models || [];
+      const result: ModelInfo[] = [];
+
+      for (const m of rawModels) {
+        const name: string = m.name;
+        let isVision: boolean | undefined;
+        let supportsTools: boolean | undefined;
+
+        // /api/tags 已返回 capabilities（vision / tools / embedding 等），优先使用，
+        // 避免逐个调用会 500 的 /api/show 导致能力丢失
+        const listCaps: string[] = (m.capabilities || []).map((c: string) => String(c).toLowerCase());
+        isVision = listCaps.includes('vision') || undefined;
+        supportsTools = listCaps.includes('tools') || undefined;
+
+        // 仅当 /api/tags 未返回 capabilities 时才回退调用 /api/show 补充探测。
+        // 现代 Ollama 的 /api/tags 已带 capabilities，跳过 /api/show 可避免对部分模型
+        // （如 gpt-oss:20b）触发 500 报错，也省去逐个请求的耗时。
+        if (listCaps.length === 0) {
+          try {
+            const showRes = await fetch(apiUrl(this.config.baseUrl, '/api/show'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: name }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (showRes.ok) {
+              const showData = await showRes.json();
+              const showCaps: string[] = (showData.capabilities || []).map((c: string) => String(c).toLowerCase());
+              const hasProjector = !!showData.projector_info && showData.projector_info !== '';
+              isVision = isVision || showCaps.includes('vision') || hasProjector || undefined;
+              supportsTools = supportsTools || showCaps.includes('tools') || undefined;
+            }
+          } catch {
+            // 单个模型探测失败，沿用 /api/tags 中的能力信息
+          }
+        }
+
+        result.push({
+          name,
+          size: this.formatSize(m.size),
+          modifiedAt: m.modified_at,
+          isVision,
+          supportsTools,
+        });
+      }
+      return result;
     } catch {
       return [];
     }
