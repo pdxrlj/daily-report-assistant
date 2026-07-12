@@ -101,7 +101,7 @@ export const TimelinePage: React.FC = () => {
             <div className="space-y-5">
               {activities
                 .slice()
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                 .map((activity, idx) => {
                   const time = new Date(activity.timestamp);
                   const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
