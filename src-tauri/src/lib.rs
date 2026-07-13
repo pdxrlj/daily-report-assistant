@@ -75,6 +75,7 @@ pub fn run() {
             ai::commands::save_analysis_result,
             ai::commands::capture_and_analyze,
             ai::commands::check_ai_status,
+            ai::commands::list_provider_models,
             ai::commands::update_ai_provider,
             ai::commands::agent_chat,
             storage::commands::get_today_activities,

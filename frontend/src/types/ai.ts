@@ -93,6 +93,8 @@ export interface ModelInfo {
   isVision?: boolean;
   /** 是否支持工具调用（function calling）。undefined = 未知/不显示 */
   supportsTools?: boolean;
+  /** 模型所属服务商（聚合多服务商列表时使用） */
+  source?: AIProviderType;
 }
 
 export interface SystemInfo {

@@ -1,4 +1,5 @@
-import type { AIProviderConfig, AIAnalysisRequest, AIAnalysisResponse, ProviderStatus, ModelInfo, StructuredAnalysis, ActivityType } from '../types/ai';
+import type { AIProviderConfig, AIAnalysisRequest, AIAnalysisResponse, ProviderStatus, ModelInfo, StructuredAnalysis, ActivityType, AIProviderType } from '../types/ai';
+import { PROVIDER_PRESETS } from '../types/ai';
 import { isTauri } from './env';
 import { OllamaProvider } from './ollamaProvider';
 import { LMStudioProvider } from './lmStudioProvider';
@@ -87,8 +88,93 @@ export async function analyzeImage(
 }
 
 export async function listProviderModels(config: AIProviderConfig): Promise<ModelInfo[]> {
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke<Array<Record<string, any>>>('list_provider_models', {
+        providerType: config.type,
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey ?? null,
+      });
+      return result.map((m) => ({
+        name: m.name,
+        size: m.size,
+        isVision: m.isVision ?? undefined,
+        supportsTools: m.supportsTools ?? undefined,
+      }));
+    } catch (err: any) {
+      throw new Error('模型列表获取失败：' + (err?.message || err));
+    }
+  }
   const provider = createProvider(config);
   return provider.listModels();
+}
+
+export interface ProviderModelsResult {
+  type: AIProviderType;
+  label: string;
+  available: boolean;
+  baseUrl: string;
+  models: ModelInfo[];
+  error?: string;
+}
+
+export type ProviderOverrides = Partial<
+  Record<AIProviderType, { baseUrl?: string; apiKey?: string }>
+>;
+
+/**
+ * 并行拉取所有服务商（Ollama / LM Studio / OpenAI）的可用模型，
+ * 聚合为一个带来源(source)的统一列表，供 UI 无需切换服务商即可选择。
+ */
+export async function listAllProviderModels(
+  overrides: ProviderOverrides = {},
+): Promise<ProviderModelsResult[]> {
+  const types: AIProviderType[] = ['ollama', 'lmstudio', 'openai'];
+
+  const settled = await Promise.allSettled(
+    types.map(async (type) => {
+      const preset = PROVIDER_PRESETS[type];
+      const ov = overrides[type] || {};
+      // OpenAI 未配置 Key 时直接跳过，避免无意义的 401 报错
+      if (type === 'openai' && !ov.apiKey && !preset.apiKey) {
+        return {
+          type,
+          label: preset.label,
+          available: false,
+          baseUrl: ov.baseUrl || preset.baseUrl,
+          models: [],
+          error: '未配置 API Key',
+        } as ProviderModelsResult;
+      }
+      const config: AIProviderConfig = {
+        ...preset,
+        baseUrl: ov.baseUrl || preset.baseUrl,
+        apiKey: ov.apiKey ?? preset.apiKey,
+      };
+      const models = await listProviderModels(config);
+      return {
+        type,
+        label: preset.label,
+        available: true,
+        baseUrl: config.baseUrl,
+        models: models.map((m) => ({ ...m, source: type })),
+      } as ProviderModelsResult;
+    }),
+  );
+
+  return settled.map((r, i) => {
+    const type = types[i];
+    if (r.status === 'fulfilled') return r.value;
+    return {
+      type,
+      label: PROVIDER_PRESETS[type].label,
+      available: false,
+      baseUrl: PROVIDER_PRESETS[type].baseUrl,
+      models: [],
+      error: (r.reason as any)?.message || '获取失败',
+    } as ProviderModelsResult;
+  });
 }
 
 export function generateAnalysisPrompt(): string {

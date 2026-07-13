@@ -99,8 +99,8 @@ export class OllamaProvider {
         });
       }
       return result;
-    } catch {
-      return [];
+    } catch (e: any) {
+      throw new Error('Ollama 模型列表获取失败：' + (e?.message || e));
     }
   }
 

@@ -26,7 +26,7 @@ const AGENT_ACTIONS: AgentAction[] = [
 ];
 
 export const AgentPage: React.FC = () => {
-  const { getChatConfig, getEffectiveConfig, customModel, providerConfig } = useSettingsStore();
+  const { getChatConfig, getEffectiveConfig, customModel, providerConfig, chatModel } = useSettingsStore();
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: '你好！我是你的工作助手。我可以帮你分析工作数据、生成报告、提供建议。请告诉我你需要什么帮助？', timestamp: new Date() },
   ]);
@@ -35,7 +35,7 @@ export const AgentPage: React.FC = () => {
   const [modelOptions, setModelOptions] = useState<string[]>(
     providerConfig.models && providerConfig.models.length > 0 ? providerConfig.models : [],
   );
-  const [selectedModel, setSelectedModel] = useState<string>(customModel || providerConfig.defaultModel || '');
+  const [selectedModel, setSelectedModel] = useState<string>(chatModel || customModel || providerConfig.defaultModel || '');
   const [loadingModels, setLoadingModels] = useState(false);
 
   const loadModels = useCallback(async () => {
@@ -56,12 +56,14 @@ export const AgentPage: React.FC = () => {
     loadModels();
   }, [loadModels]);
 
-  // 设置页切换了模型时同步默认选中项
+  // 设置页切换了对话模型时同步默认选中项（优先使用持久化的 chatModel）
   useEffect(() => {
-    if (customModel && customModel !== selectedModel && !modelOptions.includes(selectedModel)) {
+    if (chatModel && chatModel !== selectedModel) {
+      setSelectedModel(chatModel);
+    } else if (customModel && customModel !== selectedModel && !modelOptions.includes(selectedModel)) {
       setSelectedModel(customModel);
     }
-  }, [customModel, modelOptions, selectedModel]);
+  }, [chatModel, customModel, modelOptions, selectedModel]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || loading) return;

@@ -152,6 +152,39 @@ pub async fn check_ai_status(
 }
 
 #[tauri::command]
+pub async fn list_provider_models(
+    provider_type: Option<String>,
+    base_url: Option<String>,
+    api_key: Option<String>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let provider_type_enum = match provider_type.as_deref() {
+        Some("ollama") => AIProviderType::Ollama,
+        Some("lmstudio") => AIProviderType::LMStudio,
+        Some("openai") => AIProviderType::OpenAI,
+        other => return Err(format!("Unknown provider type: {:?}", other)),
+    };
+    let config = AIProviderConfig::build_for(provider_type_enum.clone(), base_url, String::new(), api_key);
+    let temp_provider: Box<dyn AIProvider> = match provider_type_enum {
+        AIProviderType::Ollama => Box::new(OllamaClient::new(config)),
+        AIProviderType::LMStudio => Box::new(LMStudioClient::new(config)),
+        AIProviderType::OpenAI => Box::new(LMStudioClient::new(config)),
+    };
+    let models = temp_provider.list_models().await.map_err(|e| e.to_string())?;
+    let result: Vec<serde_json::Value> = models
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "name": m.name,
+                "size": m.size,
+                "isVision": m.is_vision,
+                "supportsTools": m.supports_tools,
+            })
+        })
+        .collect();
+    Ok(result)
+}
+
+#[tauri::command]
 pub async fn update_ai_provider(
     provider_type: String,
     base_url: String,

@@ -6,7 +6,7 @@ import { detectLocalProviders } from '../services/providerDetector';
 
 interface SettingsState {
   aiProvider: AIProviderType;
-  customBaseUrl: string;
+  customBaseUrls: Partial<Record<AIProviderType, string>>;
   customModel: string;
   visionModel: string;
   chatModel: string;
@@ -21,10 +21,10 @@ interface SettingsState {
   providerConfig: AIProviderConfig;
 
   setAIProvider: (provider: AIProviderType) => void;
-  setCustomBaseUrl: (url: string) => void;
+  setCustomBaseUrl: (type: AIProviderType, url: string) => void;
   setCustomModel: (model: string) => void;
-  setVisionModel: (model: string) => void;
-  setChatModel: (model: string) => void;
+  setVisionModel: (model: string, source: AIProviderType) => void;
+  setChatModel: (model: string, source: AIProviderType) => void;
   setApiKey: (key: string) => void;
   setAutoDetect: (enabled: boolean) => void;
   setAutoCapture: (enabled: boolean) => void;
@@ -45,7 +45,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       aiProvider: 'ollama' as AIProviderType,
-      customBaseUrl: '',
+      customBaseUrls: {},
       customModel: '',
       visionModel: '',
       chatModel: '',
@@ -64,11 +64,14 @@ export const useSettingsStore = create<SettingsState>()(
         set({ aiProvider: provider, providerConfig: config });
       },
 
-      setCustomBaseUrl: (url) => {
-        set({ customBaseUrl: url });
+      setCustomBaseUrl: (type, url) => {
         const state = get();
-        const config = { ...state.providerConfig, baseUrl: url };
-        set({ providerConfig: config });
+        const next = { ...state.customBaseUrls, [type]: url };
+        set({ customBaseUrls: next });
+        // 同步更新当前激活服务商配置（用于展示与回退）
+        if (state.aiProvider === type) {
+          set({ providerConfig: { ...state.providerConfig, baseUrl: url || PROVIDER_PRESETS[type].baseUrl } });
+        }
       },
 
       setCustomModel: (model) => {
@@ -78,13 +81,31 @@ export const useSettingsStore = create<SettingsState>()(
         set({ providerConfig: config });
       },
 
-      setVisionModel: (model) => {
-        // 记录选中模型来源（当前服务商），用于跨来源显示时加 tag 区分
-        set({ visionModel: model, visionModelSource: get().aiProvider });
+      // 选择模型时记录其来源服务商，并让“激活服务商”跟随选择（用于回退/展示）
+      setVisionModel: (model, source) => {
+        const safeSource = (PROVIDER_PRESETS[source] ? source : 'ollama') as AIProviderType;
+        const state = get();
+        const preset = { ...PROVIDER_PRESETS[safeSource] };
+        const baseUrl = state.customBaseUrls[safeSource] || preset.baseUrl;
+        set({
+          visionModel: model,
+          visionModelSource: safeSource,
+          aiProvider: safeSource,
+          providerConfig: { ...preset, baseUrl, defaultModel: model || preset.defaultModel },
+        });
       },
 
-      setChatModel: (model) => {
-        set({ chatModel: model, chatModelSource: get().aiProvider });
+      setChatModel: (model, source) => {
+        const safeSource = (PROVIDER_PRESETS[source] ? source : 'ollama') as AIProviderType;
+        const state = get();
+        const preset = { ...PROVIDER_PRESETS[safeSource] };
+        const baseUrl = state.customBaseUrls[safeSource] || preset.baseUrl;
+        set({
+          chatModel: model,
+          chatModelSource: safeSource,
+          aiProvider: safeSource,
+          providerConfig: { ...preset, baseUrl, defaultModel: model || preset.defaultModel },
+        });
       },
 
       setApiKey: (key) => {
@@ -116,26 +137,15 @@ export const useSettingsStore = create<SettingsState>()(
       runDetection: async () => {
         const detected = await detectLocalProviders();
         const types = detected.map((d) => d.config.type);
+        // 仅记录检测到的服务商，不覆盖用户已选的模型与来源
         set({ detectedProviders: types });
-
-        if (types.length > 0 && get().autoDetect) {
-          const first = detected[0];
-          set({
-            aiProvider: first.config.type,
-            providerConfig: {
-              ...first.config,
-              models: first.status.models,
-              apiKey: get().apiKey,
-            },
-          });
-        }
       },
 
       getEffectiveConfig: () => {
         const state = get();
         return {
           ...state.providerConfig,
-          baseUrl: state.customBaseUrl || state.providerConfig.baseUrl,
+          baseUrl: state.customBaseUrls[state.aiProvider] || state.providerConfig.baseUrl,
           defaultModel: state.customModel || state.providerConfig.defaultModel,
           apiKey: state.apiKey || state.providerConfig.apiKey || undefined,
         };
@@ -161,9 +171,7 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...preset,
           type: source,
-          baseUrl: state.customBaseUrl && source === state.aiProvider
-            ? state.customBaseUrl
-            : preset.baseUrl,
+          baseUrl: state.customBaseUrls[source] || preset.baseUrl,
           apiKey: source === 'openai' ? (state.apiKey || preset.apiKey) : preset.apiKey,
           defaultModel: state.visionModel || state.customModel || preset.defaultModel,
         };
@@ -177,9 +185,7 @@ export const useSettingsStore = create<SettingsState>()(
         return {
           ...preset,
           type: source,
-          baseUrl: state.customBaseUrl && source === state.aiProvider
-            ? state.customBaseUrl
-            : preset.baseUrl,
+          baseUrl: state.customBaseUrls[source] || preset.baseUrl,
           apiKey: source === 'openai' ? (state.apiKey || preset.apiKey) : preset.apiKey,
           defaultModel: state.chatModel || state.customModel || preset.defaultModel,
         };
@@ -192,9 +198,11 @@ export const useSettingsStore = create<SettingsState>()(
         set({
           aiProvider: type,
           providerConfig: { ...config, defaultModel: state.visionModel || config.defaultModel },
-          customBaseUrl: '',
           customModel: '',
           apiKey: '',
+          // 切换服务商时，已选模型的来源同步为当前服务商，避免显示陈旧来源 tag 且路由到错误地址
+          visionModelSource: type,
+          chatModelSource: type,
         });
       },
     }),
@@ -202,7 +210,7 @@ export const useSettingsStore = create<SettingsState>()(
       name: PERSIST_KEY,
       partialize: (state) => ({
         aiProvider: state.aiProvider,
-        customBaseUrl: state.customBaseUrl,
+        customBaseUrls: state.customBaseUrls,
         customModel: state.customModel,
         visionModel: state.visionModel,
         chatModel: state.chatModel,

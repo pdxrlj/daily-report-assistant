@@ -78,8 +78,8 @@ export class LMStudioProvider {
         isVision: undefined,
         supportsTools: undefined,
       }));
-    } catch {
-      return [];
+    } catch (e: any) {
+      throw new Error('LM Studio 模型列表获取失败：' + (e?.message || e));
     }
   }
 
